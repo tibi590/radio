@@ -5,15 +5,17 @@ package main
 import "C"
 
 import (
-	"html/template"
-	"log"
-	"net/http"
-	"os"
-	"strconv"
+    "html/template"
+    "log"
+    "net/http"
+    "os"
+    "strconv"
 )
 
 var Tpl *template.Template
+
 const PORT string = "8080"
+const PIN_FILE_PATH string = "pin_status.txt"
 
 func Template_init() {
     var err error
@@ -31,41 +33,43 @@ func Template_init() {
 func page_handler(res http.ResponseWriter, req *http.Request) {
     path := req.URL.Path
 
-    if len(path) == 9 {
-        if path[0:7] == "/switch" {
-            pin, err := strconv.Atoi(path[8:])
-            check_err(err)
-
-            p := C.int(pin-1)
-            dec_data := C.int(overall_bin_status())
-
-            status := get_pin_status(pin)
-            voltage := C.int(1)
-
-            if status == "on" {
-                voltage = C.int(0)
-            }
-
-            // Placeholder. Not for actual use
-            p = p 
-            dec_data = dec_data
-            voltage = voltage
-
-            C.set_pin(p, dec_data, voltage)
-            /*
-            C.enable_perm()
-            C.disable_perm()
-            */
-
-            toggle_pin_status(pin)
-
-            http.Redirect(res, req, "/", http.StatusSeeOther)
-        }
-    } else {
+    if len(path) != 9 {
         index(res)
+        return
     }
-}
 
+    if path[0:7] != "/switch" {
+        return
+    }
+
+    pin, err := strconv.Atoi(path[8:])
+    check_err(err)
+
+    p := C.int(pin - 1)
+    dec_data := C.int(overall_bin_status())
+
+    status := get_pin_status(pin)
+    level := C._Bool(false)
+
+    if status == "on" {
+        level = C._Bool(true)
+    }
+
+    // Placeholder. Not for actual use
+    //p = p
+    //dec_data = dec_data
+    // level = level
+
+    C.set_pin(p, dec_data, level)
+    /*
+       C.enable_perm()
+       C.disable_perm()
+    */
+
+    toggle_pin_status(pin)
+
+    http.Redirect(res, req, "/", http.StatusSeeOther)
+}
 
 func index(res http.ResponseWriter) {
     data := gen_pins()
@@ -79,19 +83,15 @@ func gen_pins() []Pin {
     for i := 1; i < 8; i++ {
         status := get_pin_status(i)
 
-        pin := Pin {
+        pin := Pin{
             i,
             status,
             false,
         }
 
         if status != "" {
-            pin = Pin {
-                i,
-                status,
-                true,
-            }
-        }        
+            pin.IsEnabled = true
+        }
 
         all_pins = append(all_pins, pin)
     }
@@ -110,10 +110,10 @@ func overall_bin_status() int {
             status = "0"
         }
 
-        bin_data += status 
+        bin_data += status
     }
-    
-    dec_data, err := strconv.ParseInt(bin_data, 2, 64)  
+
+    dec_data, err := strconv.ParseInt(bin_data, 2, 64)
     check_err(err)
 
     return int(dec_data)
@@ -121,7 +121,7 @@ func overall_bin_status() int {
 }
 
 func get_pin_status(pin int) string {
-    status := string(open_file("pin_status.txt")[pin-1])
+    status := string(open_file(PIN_FILE_PATH)[pin-1])
 
     if status == "1" {
         status = "on"
@@ -135,11 +135,11 @@ func get_pin_status(pin int) string {
 }
 
 func toggle_pin_status(pin int) {
-    data := string(open_file("pin_status.txt"))
+    data := string(open_file(PIN_FILE_PATH))
     altered_data := ""
 
     for i := 0; i < len(data); i++ {
-        if i == pin-1 { 
+        if i == pin-1 {
             if string(data[i]) == "1" {
                 altered_data += "0"
             } else {
@@ -152,17 +152,17 @@ func toggle_pin_status(pin int) {
 
     altered_data += "\n"
 
-    write_file("pin_status.txt", []byte(altered_data))
+    write_file(PIN_FILE_PATH, []byte(altered_data))
 }
 
-func write_file(filename string, data []byte)  {
+func write_file(filename string, data []byte) {
     err := os.WriteFile(filename, data, 0644)
 
     check_err(err)
 }
 
 func open_file(filename string) []byte {
-    data, err := os.ReadFile(filename);
+    data, err := os.ReadFile(filename)
 
     check_err(err)
 
@@ -182,13 +182,22 @@ func main() {
     http.HandleFunc("/", page_handler)
 
     Template_init()
-    open_file("pin_status.txt")
+
+    // if file doesnt exists, create it with default value
+    _, err := os.Stat(PIN_FILE_PATH)
+    if os.IsNotExist(err) {
+        write_file(PIN_FILE_PATH, []byte("0000----\n"))
+    } else {
+        check_err(err)
+    }
+
+    open_file(PIN_FILE_PATH)
 
     http.ListenAndServe(":"+PORT, nil)
 }
 
 type Pin struct {
-    Num int 
-    Status string 
+    Num       int
+    Status    string
     IsEnabled bool
 }

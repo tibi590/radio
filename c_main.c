@@ -1,12 +1,19 @@
+#include "c_main.h"
+
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/io.h>
-#include <math.h>
 
 #define base 0x378 // Base address of the parallel port
 
+#define BIT(nth_bit)                    (1U << (nth_bit))
+#define CHECK_BIT(data, bit)            ((data) & BIT(bit))
+#define SET_BIT(data, bit)              ((data) |= BIT(bit))
+#define CLEAR_BIT(data, bit)            ((data) &= ~BIT(bit))
+#define CHANGE_BIT(data, bit)           ((data) ^= BIT(bit))
+
 void enable_perm() {
-    if (ioperm(base, 1, 1)) {
+    if (ioperm(base, 1, 1)) {       
         printf("Access denied to %x\n", base);
     }
 }
@@ -17,14 +24,14 @@ void disable_perm() {
     }
 }
 
-void set_pin(int pin, int data, int voltage) {
-    if (voltage) {
-        data ^= (int)pow(2, pin);
+void set_pin(int pin, int data, bool level) {
+    if (level) {
+        CLEAR_BIT(data, pin); // data &= ~(1U << bit);
     } else {
-        data &= ~((int)pow(2, pin));
+        SET_BIT(data, pin); // data |= 1U << bit;
     }
 
-    printf("%x\n", data);
+    printf("0x%02x\n", data);
 
     // outb(data, base);
 }
