@@ -14,7 +14,7 @@ const PIN_FILE_PATH = "./pins.txt"
 const READ_TIMEOUT = 100 * time.Second
 const HEARTBEAT_TIMEOUT = 20 * time.Second
 
-const USE_PARALLEL = false
+const USE_PARALLEL = true
 
 const USE_CAMERA = true
 const CAMERA_PATH = "/dev/video0"

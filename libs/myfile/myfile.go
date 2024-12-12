@@ -1,6 +1,5 @@
 package myfile
 
-// #cgo LDFLAGS: -lm
 // #include "../../c_main.h"
 import "C"
 import (
@@ -23,15 +22,15 @@ var (
 func write_port(pin_statuses []byte) {
     if !myconst.USE_PARALLEL { return }
     
-    statuses := C.int(0)
+    status_bits := C.uchar(0)
 
     for i, e := range pin_statuses {
         if e != '1' { continue }
 
-        statuses |= 1 << i
+        status_bits |= 1 << i
     }
 
-    C.set_pins(statuses)
+    C.set_pins(status_bits)
 }
 
 func Write_pin_file(pin_statuses []byte) {

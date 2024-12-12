@@ -48,12 +48,12 @@ func main() {
         log.Fatalln("MAX_NUMBER_OF_PINS cant be bigger than 63, nor smaller than 1")
     }
 
-    // if file doesnt exists, create it with default value
-    myfile.Check_file()
-    
     if myconst.USE_PARALLEL && !C.enable_perm() {
         log.Fatalln("Failed to get access to port!")
     }
+
+    // if file doesnt exists, create it with default value
+    myfile.Check_file()
 
     mytpl.Template_init()
 

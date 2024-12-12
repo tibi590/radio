@@ -2,4 +2,4 @@
 
 bool enable_perm();
 bool disable_perm();
-void set_pins(int statuses);
+void set_pins(unsigned char status_bits);

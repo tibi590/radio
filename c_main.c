@@ -28,6 +28,6 @@ bool disable_perm() {
     return true;
 }
 
-void set_pins(int statuses) {
-    outb(statuses, base);
+void set_pins(unsigned char status_bits) {
+    outb(status_bits, base);
 }
