@@ -14,19 +14,24 @@ func InvertStatusByte(statuses []byte, pin int) {
     }
 }
 
-func Toggle_pin_status(pin int) []byte {
-    statuses := myfile.Read_pin_statuses()
+func TogglePinStatus(pin int) []byte {
+    statuses := myfile.ReadPinStatuses()
+    if statuses == nil { return nil }
 
     InvertStatusByte(statuses, pin)
 
-    myfile.Write_pin_file(statuses)
+    if err := myfile.WritePinFile(statuses); err != nil {
+        return nil
+    }
     return statuses
 }
 
-func Get_data() []mystruct.Button {
+func GetData() []mystruct.Button {
     buttons := make([]mystruct.Button, myconst.MAX_NUMBER_OF_PINS)
-    names := myfile.Read_pin_names()
-    modes := myfile.Read_pin_modes()
+
+    names := myfile.ReadPinNames()
+    if names == nil { return nil }
+    modes := myfile.ReadPinModes()
 
     for i := 0; i < myconst.MAX_NUMBER_OF_PINS; i++ {
         name := names[i]

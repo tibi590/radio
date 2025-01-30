@@ -28,5 +28,4 @@ type Button struct {
 
 type IndexTemplate struct {
     Buttons []Button
-    UseCamera bool
 }

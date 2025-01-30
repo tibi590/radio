@@ -1,4 +1,4 @@
-package mytpl;
+package mytpl
 
 import (
     "radio_site/libs/myerr"
@@ -9,12 +9,12 @@ import (
 
 var Tpl *template.Template
 
-func Template_init() {
+func TemplateInit() {
     var err error
 
     Tpl, err = Tpl.ParseGlob("./templates/*.html")
 
-    myerr.Check_err(err)
+    myerr.CheckErr(err)
 
     log.Println("Parsed templates:")
     for _, tmpl := range Tpl.Templates() {

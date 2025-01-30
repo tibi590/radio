@@ -13,6 +13,7 @@ const PIN_FILE_PATH = "./pins.txt"
 
 const READ_TIMEOUT = 100 * time.Second
 const HEARTBEAT_TIMEOUT = 20 * time.Second
+const CAMERA_TRY_TIMEOUT = 5 * time.Second
 
 const USE_PARALLEL = true
 

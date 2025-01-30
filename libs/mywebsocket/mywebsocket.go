@@ -2,12 +2,12 @@ package mywebsocket
 
 import (
 	"radio_site/libs/myconst"
-	"radio_site/libs/myerr"
 	"radio_site/libs/myfile"
 	"radio_site/libs/myhelper"
 	"radio_site/libs/myparallel"
 	"radio_site/libs/mystruct"
 	"strings"
+	"sync/atomic"
 
 	"log"
 	"net/http"
@@ -17,6 +17,17 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+)
+
+const (
+	holdingCommandPrefix = "h"
+	userListCommandPrefix = "u"
+)
+
+var (
+	socketReadError = []byte("RE")
+	socketWriteError = []byte("WE")
+	socketClosed = []byte("closed")
 )
 
 var upgrader = websocket.Upgrader{
@@ -34,7 +45,7 @@ var upgrader = websocket.Upgrader{
 
 		u, err := url.Parse(r.Header["Origin"][0])
 		if err != nil {
-			myerr.CheckErrMsg("origin error: ", err)
+			log.Println("origin error: ", err)
 			return false
 		}
 
@@ -43,18 +54,19 @@ var upgrader = websocket.Upgrader{
 }
 
 var (
-	Clients = make(map[*mystruct.Client]struct{}) // "hashset"
-	ClientsLock sync.Mutex
+	Clients sync.Map
+	ClientCount atomic.Int64 // sync.Map doesnt have any len function
 )
 
 var ButtonsHeld sync.Map
 
 func clientsToString() string {
 	var builder strings.Builder
-	for client := range Clients {
-		builder.WriteString(client.Name)
+	Clients.Range(func(key, value any) bool {
+		builder.WriteString(key.(*mystruct.Client).Name)
 		builder.WriteByte(',')
-	}
+		return true
+	})
 	return builder.String()
 }
 
@@ -89,18 +101,19 @@ func startFrameSender(client *mystruct.Client) {
 }
 
 func addClient(client *mystruct.Client) {
-	ClientsLock.Lock()
-	defer ClientsLock.Unlock()
-	Clients[client] = struct{}{}
+	Clients.Store(client, struct{}{})
+	ClientCount.Add(1)
 	go startFrameSender(client)
-	log.Printf("%s connected. Total clients: %d", client.Name, len(Clients))
+	go readMessages(client)
+	log.Printf("%s connected. Total clients: %d", client.Name, ClientCount.Load())
 }
 
 func removeClient(client *mystruct.Client) {
-	ClientsLock.Lock()
-	delete(Clients, client)
+	Clients.Delete(client)
 	users := clientsToString()
-	ClientsLock.Unlock()
+	ClientCount.Add(-1)
+
+	client.Conn.Close()
 
 	ButtonsHeld.Range(func(key, value any) bool {
 		if value != client { return true }
@@ -111,27 +124,30 @@ func removeClient(client *mystruct.Client) {
 
 	usersHolding := holdingClientsToString()
 
-	log.Printf("%s disconnected. Total clients: %d", client.Name, len(Clients))
-	broadcast([]byte("h" + usersHolding))
-	broadcast([]byte("u" + users))
-	broadcast(applyHeldButtons(myfile.Read_pin_statuses()))
+	log.Printf("%s disconnected. Total clients: %d", client.Name, ClientCount.Load())
+	broadcast([]byte(userListCommandPrefix + users))
+	statuses := myfile.ReadPinStatuses()
+	if statuses == nil {
+		broadcast(socketReadError)
+		return
+	}
+	broadcast([]byte(holdingCommandPrefix + usersHolding))
+	broadcast(applyHeldButtons(statuses))
 }
 
 func broadcast(text []byte) {
-	ClientsLock.Lock()
-	for c := range Clients {
-		c.Send <- text
-	}
-	ClientsLock.Unlock()
+	Clients.Range(func(key, value any) bool {
+		key.(*mystruct.Client).Send <- text
+		return true
+	})
 }
 
-func Ws_handler(res http.ResponseWriter, req *http.Request) {
+func WsHandler(res http.ResponseWriter, req *http.Request) {
 	conn, err := upgrader.Upgrade(res, req, nil)
 	if err != nil {
 		log.Println("upgrade error:", err)
 		return
 	}
-	defer conn.Close()
 
 	name := req.Header.Get("X-User")
 	if name == "" {
@@ -154,8 +170,6 @@ func Ws_handler(res http.ResponseWriter, req *http.Request) {
 	addClient(client)
 	defer removeClient(client)
 
-	go readMessages(client)
-
 	// wait maximum readTimeout second for pong
 	conn.SetReadDeadline(time.Now().Add(myconst.READ_TIMEOUT))
 	conn.SetPongHandler(func(appData string) error {
@@ -172,14 +186,14 @@ func Ws_handler(res http.ResponseWriter, req *http.Request) {
 		case <-heartbeatTicker.C:
 			// send ping
 			if err := client.WriteToClient(websocket.PingMessage, nil); err != nil {
-				log.Println(client.Name, "ping failed, closing connection:", err)
+				log.Println(client.Name, "ping failed. Closing connection:", err)
 				return
 			}
 		case message, ok := <-client.Send:
 			if !ok {
 				// Channel closed, terminate connection
-				log.Printf("%s channel closed\n", client.Name)
-				client.WriteToClient(websocket.TextMessage, []byte("closed"))
+				log.Println(client.Name, "channel closed")
+				client.WriteToClient(websocket.TextMessage, socketClosed)
 				return
 			}
 
@@ -195,14 +209,17 @@ func Ws_handler(res http.ResponseWriter, req *http.Request) {
 func readMessages(client *mystruct.Client) {
 	defer close(client.Send)
 
-	ClientsLock.Lock()
-	client.Send <- applyHeldButtons(myfile.Read_pin_statuses())
+	statuses := myfile.ReadPinStatuses()
+	if statuses == nil {
+		broadcast(socketReadError)
+		return
+	}
+	client.Send <- applyHeldButtons(statuses)
 	users := clientsToString()
-	ClientsLock.Unlock()
 
 	usersHolding := holdingClientsToString()
-	broadcast([]byte("h" + usersHolding))
-	broadcast([]byte("u" + users))
+	broadcast([]byte(holdingCommandPrefix + usersHolding))
+	broadcast([]byte(userListCommandPrefix + users))
 
 	for {
 		msgType, message, err := client.Conn.ReadMessage()
@@ -223,22 +240,30 @@ func readMessages(client *mystruct.Client) {
 			continue
 		}
 
-		modes := myfile.Read_pin_modes()
+		modes := myfile.ReadPinModes()
 		isToggleButton := modes[pin] == 'T'
 
 		var statuses []byte
 
 		if !isToggleButton {
-			statuses = myfile.Read_pin_statuses()
-			value, loaded := ButtonsHeld.LoadOrStore(pin, client)
-			if value != client { continue }
-			if loaded {
-				ButtonsHeld.Delete(pin)
+			statuses = myfile.ReadPinStatuses()
+			if statuses == nil {
+				broadcast(socketReadError)
+				return
 			}
+
+			value, loaded := ButtonsHeld.LoadOrStore(pin, client)
+			if value != client { continue }       // if button is not held by requesting user, deny it
+			if loaded { ButtonsHeld.Delete(pin) } // if button already held by requesting user, release it
+
 			usersHolding := holdingClientsToString()
-			broadcast([]byte("h" + usersHolding))
+			broadcast([]byte(holdingCommandPrefix + usersHolding))
 		} else {
-			statuses = myhelper.Toggle_pin_status(pin)
+			statuses = myhelper.TogglePinStatus(pin)
+			if statuses == nil {
+				broadcast(socketWriteError)
+				return
+			}
 		}
 
 		applyHeldButtons(statuses)

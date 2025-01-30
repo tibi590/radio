@@ -1,18 +1,19 @@
 package myparallel
 
-// #cgo LDFLAGS: -lm
 // #include "../../c_main.h"
 import "C"
 import (
+	"errors"
 	"log"
 	"radio_site/libs/myconst"
 )
 
-func WritePort(pin_statuses []byte) {
-    if !myconst.USE_PARALLEL { return }
+var ErrParallelNotEnabled = errors.New("Parallel not enabled")
+var ErrPortAccess = errors.New("Access denied to port")
 
-    if !C.enable_perm() {
-        log.Println("Failed to get access to port!")
+func WritePort(pin_statuses []byte) {
+    if err := CheckPerm(); err != nil {
+        if err == ErrPortAccess { log.Println(err) }
         return
     }
 
@@ -25,4 +26,10 @@ func WritePort(pin_statuses []byte) {
     }
 
     C.set_pins(status_bits)
+}
+
+func CheckPerm() (error) {
+    if !myconst.USE_PARALLEL { return ErrParallelNotEnabled }
+    if !C.enable_perm() { return ErrPortAccess }
+    return nil
 }

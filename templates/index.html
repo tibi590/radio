@@ -14,14 +14,14 @@
                 <ul id="users"></ul>
             </div>
 
-            {{ if .UseCamera }} <canvas id="video" width="1280" height="720"></canvas> {{ end }}
+            <canvas id="video" width="1280" height="720" hidden></canvas>
         </div>
 
         <div id="buttons">
             {{ range .Buttons }}
             <div class="button_container">
                 {{ if .IsToogle }}
-                <button id="radio_{{ .Num }}" pin_num="{{ .Num }}" toggle onclick="pressed(this, {{ .Num }})">{{ .Name }}</button>
+                <button id="radio_{{ .Num }}" pin_num="{{ .Num }}" toggle>{{ .Name }}</button>
                 {{ else }}
                 <button id="radio_{{ .Num }}" pin_num="{{ .Num }}" push>{{ .Name }}</button>
                 {{ end }}

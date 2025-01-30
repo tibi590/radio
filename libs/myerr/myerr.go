@@ -10,6 +10,6 @@ func CheckErrMsg(msg string, e error) {
 	}
 }
 
-func Check_err(e error) {
+func CheckErr(e error) {
 	CheckErrMsg("", e)
 }

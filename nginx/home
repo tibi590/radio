@@ -14,8 +14,6 @@ server {
 	auth_basic "Restriced Access";
 	auth_basic_user_file .radio_htpasswd;
 
-	#error_page 401 = @bad_creds;
-
 	location ~ /\. {
 		deny all;
 	}
@@ -24,15 +22,6 @@ server {
 		proxy_set_header Host $host;
 		proxy_set_header X-Real-IP $remote_addr;
 		proxy_pass http://radio_server;
-		proxy_set_header Origin $http_origin;
-		proxy_set_header X-Host $host;
-		proxy_set_header X-User $remote_user;
-	}
-
-	location /video {
-		proxy_set_header Host $host;
-		proxy_set_header X-Real-IP $remote_addr;
-		proxy_pass http://radio_server/video;
 		proxy_set_header Origin $http_origin;
 		proxy_set_header X-Host $host;
 		proxy_set_header X-User $remote_user;

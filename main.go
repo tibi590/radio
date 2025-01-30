@@ -9,6 +9,7 @@ import (
 	"radio_site/libs/myconst"
 	"radio_site/libs/myerr"
 	"radio_site/libs/myfile"
+	"radio_site/libs/myparallel"
 	"radio_site/libs/mystruct"
 
 	"radio_site/libs/myhelper"
@@ -19,7 +20,7 @@ import (
 	"net/http"
 )
 
-func page_handler(res http.ResponseWriter, req *http.Request) {
+func pageHandler(res http.ResponseWriter, req *http.Request) {
     path := req.URL.Path
 
     if path == "/" {
@@ -31,16 +32,19 @@ func page_handler(res http.ResponseWriter, req *http.Request) {
 }
 
 func index(res http.ResponseWriter) {
-    buttons := myhelper.Get_data()
+    buttons := myhelper.GetData()
+    if buttons == nil {
+        http.Error(res, "Failed to read pins file", 500)
+        return
+    }
 
     data := mystruct.IndexTemplate {
         Buttons: buttons,
-        UseCamera: myconst.USE_CAMERA,
     }
 
     err := mytpl.Tpl.ExecuteTemplate(res, "index.html", data)
 
-    myerr.Check_err(err)
+    myerr.CheckErr(err)
 }
     
 func main() {
@@ -48,25 +52,24 @@ func main() {
         log.Fatalln("MAX_NUMBER_OF_PINS cant be bigger than 63, nor smaller than 1")
     }
 
-    if myconst.USE_PARALLEL && !C.enable_perm() {
-        log.Fatalln("Failed to get access to port!")
+    if err := myparallel.CheckPerm(); err == myparallel.ErrPortAccess {
+        log.Fatalln(err)
     }
 
     // if file doesnt exists, create it with default value
-    myfile.Check_file()
+    myfile.CheckFile()
 
-    mytpl.Template_init()
+    mytpl.TemplateInit()
 
     if myconst.USE_CAMERA {
-        camera := mycamera.InitCamera()
-        defer camera.Close()
+        mycamera.InitCamera()
     }
 
     http.Handle("/css/", http.StripPrefix("/css", http.FileServer(http.Dir("./css"))))
     http.Handle("/js/", http.StripPrefix("/js", http.FileServer(http.Dir("./js"))))
 
-    http.HandleFunc("/", page_handler)
-    http.HandleFunc("/radio_ws", mywebsocket.Ws_handler)
+    http.HandleFunc("/", pageHandler)
+    http.HandleFunc("/radio_ws", mywebsocket.WsHandler)
 
     http.ListenAndServe(":"+myconst.PORT, nil)
 }
